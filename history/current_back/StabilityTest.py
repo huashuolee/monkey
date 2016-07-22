@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 import time, os, random, threading, subprocess
-import argparse
 
 import sys
 
@@ -11,23 +10,20 @@ import shutil
 import STQueue
 
 ##配置参数
-TestMin = 1  # 测试时间，分钟
+TestMin = 2000  # 测试时间，分钟
 TimeOut = 1000  # 超时时间（秒）
 eventTimes = 500  # 事件次数
 delay = 500  # 两个事件间的延迟
-logDir = "crashlog"
-jsonDir = logDir + "/json"
 
 
 class StabilityTest():
-    def __init__(self, device):
+    def __init__(self):
         self.testTime = TestMin
         self.localTime = time.time()
         self.timeout = TimeOut  # second
         self.eventTimes = eventTimes
         self.delay = delay
-        self.logDir = u'crashlog/raw/' + device
-        self.jsonDir = u"crashlog/json"
+        self.logDir = u'crashlog'
         if not os.path.exists(self.logDir):
             os.mkdir(self.logDir)
 
@@ -43,42 +39,60 @@ class StabilityTest():
         self.screenPathTarget = os.path.join(self.screenPathTargetDir, (r'screenshot_%s.png' % ranStr))
         self.logPathTargetDir = r'\\192.168.1.112\share\report\OSCrash_log\monkey\log'
         self.logPathTarget = os.path.join(self.logPathTargetDir, (r'log_%s.txt' % ranStr))  # 备份crashlog的路径
-        pylog.log.error(self.logPathTarget)
 
-    def run(self, device):
-        deviceTarget = device
+    #         self.logcatPath = os.path.join(self.logDir, r'logcat_%s.txt' % ranStr)
+
+
+    def run(self, devices=100):
+        global targetDevicesList
+        targetDevicesList = []
+        devicesList = self.getDevicesList()
+        if devices < 100:
+            for d in len(devices):
+                targetDevicesList.append(devicesList[d])
+        else:
+            targetDevicesList = devicesList
+        tp = STQueue.ThreadPool(len(targetDevicesList))
         i = 1
         while time.time() - self.localTime < self.testTime * 60:
-            pylog.log.error(time.time() - self.localTime)
+            while not targetDevicesList:
+                time.sleep(5)
             self.setup()
+            deviceTarget = targetDevicesList.pop()
             cmd_part = '-s %s' % deviceTarget
 
             runTarget = self.runPackages()  # swith: runPackages()  , runBlaskList(cmd_part)  #debug
+            #             logcatClass = self.makeLogcat(cmd_part)  ##add logcat
             time.sleep(1)
 
-            def test_job(*args):
-                deviceTarget, runTarget, seed, eventTimes, delay, logPath = args
-                pylog.log.info("第 %s 次测试" % i)
+            def test_job(mytuple, x=1):
+                deviceTarget, runTarget, seed, eventTimes, delay, logPath = mytuple
+                pylog.log.error("")
                 # deviceTarget,runTarget=runTarget, seed=seed, eventTimes=eventTimes, delay=delaey, logPath=logPath
                 print "adb -s %s shell monkey %s \
                      -s %s -v %s --throttle %s  --monitor-native-crashes --kill-process-after-error --ignore-timeouts \
                     --pct-touch 50 --pct-motion 25 --pct-trackball 15 --pct-syskeys 5 --pct-appswitch 5  > %s" % (
-                    deviceTarget, runTarget, seed, eventTimes, delay, logPath)
+                deviceTarget, runTarget, seed, eventTimes, delay, logPath)
                 try:
                     t = threading.Thread(target=os.system, args=("adb -s %s shell monkey %s \
                      -s %s -v %s --throttle %s  --monitor-native-crashes --kill-process-after-error --ignore-timeouts \
                     --pct-touch 50 --pct-motion 25 --pct-trackball 15 --pct-syskeys 5 --pct-appswitch 5  > %s" % (
-                        deviceTarget, runTarget, seed, eventTimes, delay, logPath),))
+                    deviceTarget, runTarget, seed, eventTimes, delay, logPath),))
                     t.start()
                     t.join(self.timeout)
                 except:
                     pylog.log.error('执行错误')
                     time.sleep(15)
+                finally:
+                    global targetDevicesList
+                    targetDevicesList.append(deviceTarget)
 
             pylog.log.info("add_job:%s" % deviceTarget)
-            test_job(deviceTarget, runTarget, self.seed, self.eventTimes, self.delay, self.logPath)
+            tp.add_job(test_job, deviceTarget, runTarget, self.seed, self.eventTimes, self.delay, self.logPath)
             pylog.log.info("wait_complete_in_thread:%s" % deviceTarget)
-            # self.wait_complete_in_thread(self.teardown, cmd_part, self.logPath, self.crashJson, deviceTarget)
+            self.wait_complete_in_thread(self.teardown, cmd_part, self.logPath, self.crashJson, deviceTarget)
+
+            pylog.log.info("第 %s 次测试" % i)
             i += 1
 
     def teardown(self, logPath, crashJson, arg=''):
@@ -99,11 +113,13 @@ class StabilityTest():
             while jobTarget not in targetDevicesList:
                 time.sleep(5)
             return callable(logPathT, crashJsonT, args)
+
         mc = threading.Thread(target=monitorComplet)
         mc.start()
 
     def makeLogcat(self, arg=''):
         cmd = 'adb -s %s logcat *:E' % arg
+        #         os.system('adb logcat *:E >%s' % self.logcatPath)
         logcatC = subprocess.Popen(cmd, stdout=subprocess.PIPE)
         return logcatC
 
@@ -114,6 +130,7 @@ class StabilityTest():
         logcatObj.write(logcatStr)
         logcatObj.close()
         os.system('adb -s %s logcat -c' % arg)
+
         proListClass = os.popen("adb -s %s shell ps" % arg)  # get process list
         proListStr = proListClass.read()
         proList = proListStr.split('\r\n')
@@ -201,7 +218,9 @@ class StabilityTest():
                         fields.remove('')
                         fields.remove('')
                 pid = fields[1]
+
                 os.system('adb -s %s shell su -c "kill -s %s"' % (arg, pid))
+
                 time.sleep(2)
                 delcmd = 'adb -s %s shell su -c "rm -f /data/data/com.chaozhuo.filemanager/shared_prefs/PhoenixCommon.xml"' % arg
                 os.system(delcmd)
@@ -213,28 +232,14 @@ class StabilityTest():
                         fields.remove('')
                         fields.remove('')
                 pid = fields[1]
+
                 os.system('adb -s %s shell su -c "kill -s %s"' % (arg, pid))
                 time.sleep(2)
+
                 delcmd = 'adb -s %s shell su -c "rm -rf /data/data/com.chaozhuo.browser/app_chromeshell/Default"' % arg
                 os.system(delcmd)
                 delcmd = 'adb -s %s shell su -c "rm -rf /data/data/com.chaozhuo.browser/app_tabs"' % arg
                 os.system(delcmd)
-
-
-class parseLogs():
-    def parseLogs(self, logDir):
-        for dirpath, dirnames, filenames in os.walk(logDir):
-            for file in filenames:
-                filePath = os.path.join(dirpath, file)
-                self.filterCrashLog(filePath, jsonDir + r'/%s.json' % file)
-
-    def filterCrashLog(self, logPath, crashJsonPath, arg=''):
-        crassInfoDict = self.parseLog(logPath)
-        if crassInfoDict:
-            jsonCrashResult = self.rawJson(crassInfoDict, arg)
-            fileObj = open(crashJsonPath, 'w')
-            fileObj.write(jsonCrashResult)
-            fileObj.close()
 
     def parseLog(self, logPath):
         pylog.log.info('parseLog:\nlogPath: %s' % logPath)
@@ -255,7 +260,7 @@ class parseLogs():
                 message = one.split(':')[2]
             elif one.find('// Build Time:') > -1:
                 infoTime = one.split(':')[1]
-            # ##ANR
+            #             ##ANR
             #             elif one.find('ANR in ')>-1:
             #                 crassInfo.append(one)
             #                 crassInfo.append(os.path.join(self.logPathTargetDir,os.path.basename(logPath)))
@@ -277,7 +282,7 @@ class parseLogs():
                 crassInfoDict['class_name'] = className.strip()
                 crassInfoDict['app_version'] = '1.0'
                 crassInfoDict['message'] = message.strip()
-            # else:  #ANR
+            #             else:  #ANR
             #                 crassInfoDict = {}
             #                 crassInfoDict['time'] = time.time()*1000
             #                 crassInfoDict['stack'] = crassInfo[1].strip()
@@ -295,7 +300,34 @@ class parseLogs():
 
             return False
 
+    def filterCrashLog(self, logPath, crashJsonPath, arg=''):
+        crassInfoDict = self.parseLog(logPath)
+        if crassInfoDict:
+            jsonCrashResult = self.rawJson(crassInfoDict, arg)
+            fileObj = open(crashJsonPath, 'w')
+            fileObj.write(jsonCrashResult)
+            fileObj.close()
+            """
+
+            try:
+                self.getPic(arg)
+                shutil.copy(self.screenPath, self.screenPathTarget)
+                shutil.copy(self.logPath, self.logPathTarget)  # debug
+            except:
+                pylog.log.error('截图没有保存到112')
+            """
+            pylog.log.error(os.path.basename(crashJsonPath))
+            try:
+                pylog.log.error(os.path.dirname(self.logPathTarget) + '//' + os.path.basename(crashJsonPath))  # debug
+                shutil.copy(crashJsonPath,
+                            #os.path.dirname(self.logPathTarget) + '\\' + os.path.basename(crashJsonPath))  # debug
+                            os.path.dirname(self.logPathTarget) + '//' + os.path.basename(crashJsonPath))  # debug
+
+            except:
+                pylog.log.error('crash文件没有copy：%s' % crashJsonPath)
+
     def getDeviceInfo(self, arg=''):
+        #deviceInfoClass = os.popen("adb -s %s shell cat /system/build.prop" % arg)
         deviceInfoClass = os.popen("adb shell cat /system/build.prop")
 
         deviceInfoStr = deviceInfoClass.read()
@@ -359,25 +391,33 @@ class parseLogs():
         return resultDictJson
 
 
-def parseArgs(argv):
-    parser = argparse.ArgumentParser()
-    # parser.add_argument('start', help="specify the device ID")
-    parser.add_argument('-f', dest='filterLog', help="format the log to json")
-    parser.add_argument('-u', dest='uploadLog', help="upload log to server")
-    parser.add_argument('-s', dest='sn', help="device id")
-    args = parser.parse_args()
-    if args.filterLog:
-        print args.filterLog
-        parseLogs().parseLogs(args.filterLog)
-    if args.uploadLog:
-        pass
+def parseLogs(logDir):
+    ST = StabilityTest()
 
-    if args.sn:
-        deviceid = args.sn
-        StabilityTest(deviceid).run(deviceid)
-    else:
-        print "usage: StabilityTest.py [-h] [-f FILTERLOG] [-u UPLOADLOG] [-s SN]"
+    for dirpath, dirnames, filenames in os.walk(logDir):
+        for file in filenames:
+            filePath = os.path.join(dirpath, file)
+            print "====="+filePath
+            #ST.filterCrashLog(filePath, r'\\192.168.1.112\share\report\OSCrash_json\%s.json' % file)
+
+            # filePath = /home/huashuolee/data/work/dailywork/20160616/20160608/log_2016-05-25_213454.txt
+            ST.filterCrashLog(filePath, r'/home/huashuolee/data/work/tmp/OSCrash_json/%s.json' % file)
 
 
 if __name__ == "__main__":
-    parseArgs(sys.argv[1:])
+
+    #parseLogs(r'\\file\share\report\OSCrash_log\monkey')
+
+    #parseLogs(r'/home/huashuolee/work/dailywork/20160616/20160608')
+
+    #parseLogs(sys.argv[1])
+
+    StabilityTest().run()
+
+    #     StabilityTest().run()
+    #     StabilityTest().stop()
+    #     print StabilityTest().getDevicesList()
+    #         StabilityTest().multiRun()
+    #     StabilityTest().makeBlacklist()
+    #     StabilityTest().clearAppData()
+    #     print StabilityTest().rawJson()
