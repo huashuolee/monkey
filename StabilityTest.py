@@ -2,13 +2,13 @@
 
 import time, os, random, threading, subprocess
 import argparse
-
 import sys
+import platform
 
-import pylog
+from common import pylog
 import json
+from common import prints
 import shutil
-import STQueue
 
 ##配置参数
 TestMin = 1  # 测试时间，分钟
@@ -16,7 +16,7 @@ TimeOut = 1000  # 超时时间（秒）
 eventTimes = 500  # 事件次数
 delay = 500  # 两个事件间的延迟
 logDir = "crashlog"
-jsonDir = logDir + "/json"
+jsonDir = logDir + os.sep + "json"
 
 
 class StabilityTest():
@@ -26,16 +26,20 @@ class StabilityTest():
         self.timeout = TimeOut  # second
         self.eventTimes = eventTimes
         self.delay = delay
-        self.logDir = u'crashlog/raw/' + device
-        self.jsonDir = u"crashlog/json"
+        self.logDir = logDir + os.sep + "raw" + os.sep + device
+        prints.print_msg("E",self.logDir)
+        self.jsonDir = jsonDir
         if not os.path.exists(self.logDir):
-            os.mkdir(self.logDir)
+            os.makedirs(self.logDir)
+
+        self.recordDeviceInfo(self.logDir)
 
     def setup(self):
         ranStr = time.strftime("%Y-%m-%d_%H%M%S", time.localtime())
         self.seed = random.randint(1000000, 9999999)
         self.logPath = os.path.join(self.logDir, 'log_%s.txt' % ranStr)
         self.screenPath = os.path.join(self.logDir, r'screenshot_%s.png' % ranStr)
+        """
         self.crashJsonDir = r'\\192.168.1.112\share\report\OSCrash_json'
         self.crashJson = os.path.join(self.crashJsonDir, (r'crash_%s.json' % ranStr))
 
@@ -44,6 +48,7 @@ class StabilityTest():
         self.logPathTargetDir = r'\\192.168.1.112\share\report\OSCrash_log\monkey\log'
         self.logPathTarget = os.path.join(self.logPathTargetDir, (r'log_%s.txt' % ranStr))  # 备份crashlog的路径
         pylog.log.error(self.logPathTarget)
+        """
 
     def run(self, device):
         deviceTarget = device
@@ -220,31 +225,40 @@ class StabilityTest():
                 delcmd = 'adb -s %s shell su -c "rm -rf /data/data/com.chaozhuo.browser/app_tabs"' % arg
                 os.system(delcmd)
 
+    def recordDeviceInfo(self, arg=''):
+        deviceInfoClass = os.popen("adb shell cat /system/build.prop")
+        with open(arg + "/deviceInfo.txt","aw") as f:
+            for item in deviceInfoClass.read():
+                f.write(item)
+
 
 class parseLogs():
     def parseLogs(self, logDir):
         for dirpath, dirnames, filenames in os.walk(logDir):
             for file in filenames:
                 filePath = os.path.join(dirpath, file)
-                self.filterCrashLog(filePath, jsonDir + r'/%s.json' % file)
+                self.filterCrashLog(filePath, jsonDir + r'/%s.json' % file,dirpath)
+                # crashlog/raw/xxxxx/logxxxx.txt, crashlog/json/xxxxx.json
+                #dirpath/deviceinfo.txt
 
     def filterCrashLog(self, logPath, crashJsonPath, arg=''):
         crassInfoDict = self.parseLog(logPath)
         if crassInfoDict:
-            jsonCrashResult = self.rawJson(crassInfoDict, arg)
+            prints.print_msg("E", crassInfoDict)
+            deviceinfo = arg + "/deviceInfo.txt"
+            jsonCrashResult = self.rawJson(crassInfoDict, deviceinfo)
             fileObj = open(crashJsonPath, 'w')
             fileObj.write(jsonCrashResult)
             fileObj.close()
 
     def parseLog(self, logPath):
         pylog.log.info('parseLog:\nlogPath: %s' % logPath)
-        fileObj = open(logPath, 'r')
-        logList = fileObj.readlines()
-        fileObj.close()
+        with open(logPath, 'r') as fileObj:
+            log_list = fileObj.readlines()
         crassInfo = []
         flag = 0
         lineNum = 0
-        for one in logList:
+        for one in log_list:
             lineNum += 1
             if one.find('// CRASH: ') > -1:
                 flag = 1
@@ -296,13 +310,8 @@ class parseLogs():
             return False
 
     def getDeviceInfo(self, arg=''):
-        deviceInfoClass = os.popen("adb shell cat /system/build.prop")
-
-        deviceInfoStr = deviceInfoClass.read()
-        if deviceInfoStr == '':
-            pylog.log.error('可能没有连接设备！')
-            return {}
-        deviceInfoList = deviceInfoStr.split('\r\n')
+        with open(arg, "r") as f:
+            deviceInfoList = f.readlines()
         pid = 0
         manufacturer, deviceName, sdkName, productName, brandName, modelName = '', '', '', '', '', ''
         #         print deviceInfoList
@@ -357,6 +366,27 @@ class parseLogs():
         resultDict.update(resultDict_pic)
         resultDictJson = json.dumps(resultDict)
         return resultDictJson
+
+
+class upload_logs():
+    def __init__(self):
+        self.l_json = 'crashlog/json'
+        self.r_json = "192.168.1.112" + os.sep + "share" + os.sep + "report" + os.sep +"OSCrash_json"
+
+    def copyfile(self):
+        ostype = platform.system()
+        if ostype == "Linux":
+            pass
+        elif ostype == "Windows":
+            pass
+
+
+
+
+
+
+
+
 
 
 def parseArgs(argv):
