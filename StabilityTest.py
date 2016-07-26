@@ -408,7 +408,7 @@ def parseArgs(argv):
     parser.add_argument("-r", help="python StabilityTest.py -r -s 0584e3fc", action="store_true")
     parser.add_argument('-s', dest='sn', help="python StabilityTest.py -r -s 0584e3fc")
     parser.add_argument('-u', dest='uploadLog', help="upload log to server",action="store_true")
-    parser.add_argument('--reboot', dest='reboot', help="reboot the device once error occurs")
+    parser.add_argument('--reboot', dest='reboot', help="reboot the device once error occurs",action="store_true")
     args = parser.parse_args()
     if args.formatlog:
         print args.formatlog
