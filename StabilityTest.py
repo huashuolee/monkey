@@ -232,7 +232,7 @@ class StabilityTest():
 
     def recordDeviceInfo(self, arg=''):
         deviceInfoClass = os.popen("adb shell cat /system/build.prop")
-        with open(arg + "/deviceInfo.txt", "aw") as f:
+        with open(arg + "/deviceInfo.txt", "w") as f:
             for item in deviceInfoClass.read():
                 f.write(item)
 
