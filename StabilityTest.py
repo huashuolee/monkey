@@ -29,7 +29,9 @@ class StabilityTest():
         self.logDir = logDir + os.sep + "raw" + os.sep + device
         prints.print_msg("A", "Test start running: \n\r" + self.logDir)
         self.jsonDir = jsonDir
-        shutil.rmtree(self.logDir)
+
+        if os.path.exists(self.logDir):
+            shutil.rmtree(self.logDir)
         if not os.path.exists(self.logDir):
             os.makedirs(self.logDir)
         if not os.path.exists(jsonDir):
