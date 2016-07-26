@@ -27,11 +27,13 @@ class StabilityTest():
         self.eventTimes = eventTimes
         self.delay = delay
         self.logDir = logDir + os.sep + "raw" + os.sep + device
-        prints.print_msg("E",self.logDir)
+        prints.print_msg("A", "Test start running: \n\r" + self.logDir)
         self.jsonDir = jsonDir
+        shutil.rmtree(self.logDir)
         if not os.path.exists(self.logDir):
             os.makedirs(self.logDir)
-
+        if not os.path.exists(jsonDir):
+            os.makedirs(jsonDir)
         self.recordDeviceInfo(self.logDir)
 
     def setup(self):
@@ -104,6 +106,7 @@ class StabilityTest():
             while jobTarget not in targetDevicesList:
                 time.sleep(5)
             return callable(logPathT, crashJsonT, args)
+
         mc = threading.Thread(target=monitorComplet)
         mc.start()
 
@@ -227,7 +230,7 @@ class StabilityTest():
 
     def recordDeviceInfo(self, arg=''):
         deviceInfoClass = os.popen("adb shell cat /system/build.prop")
-        with open(arg + "/deviceInfo.txt","aw") as f:
+        with open(arg + "/deviceInfo.txt", "aw") as f:
             for item in deviceInfoClass.read():
                 f.write(item)
 
@@ -237,9 +240,9 @@ class parseLogs():
         for dirpath, dirnames, filenames in os.walk(logDir):
             for file in filenames:
                 filePath = os.path.join(dirpath, file)
-                self.filterCrashLog(filePath, jsonDir + r'/%s.json' % file,dirpath)
+                self.filterCrashLog(filePath, jsonDir + r'/%s.json' % file, dirpath)
                 # crashlog/raw/xxxxx/logxxxx.txt, crashlog/json/xxxxx.json
-                #dirpath/deviceinfo.txt
+                # dirpath/deviceinfo.txt
 
     def filterCrashLog(self, logPath, crashJsonPath, arg=''):
         crassInfoDict = self.parseLog(logPath)
@@ -371,7 +374,7 @@ class parseLogs():
 class upload_logs():
     def __init__(self):
         self.l_json = 'crashlog/json'
-        self.r_json = "192.168.1.112" + os.sep + "share" + os.sep + "report" + os.sep +"OSCrash_json"
+        self.r_json = "192.168.1.112" + os.sep + "share" + os.sep + "report" + os.sep + "OSCrash_json"
 
     def copyfile(self):
         ostype = platform.system()
@@ -381,32 +384,26 @@ class upload_logs():
             pass
 
 
-
-
-
-
-
-
-
-
 def parseArgs(argv):
     parser = argparse.ArgumentParser()
     # parser.add_argument('start', help="specify the device ID")
-    parser.add_argument('-f', dest='filterLog', help="format the log to json")
+    parser.add_argument('-f', dest='formatlog', help="python StabilityTest.py -f crashlog/raw")
+    parser.add_argument("-r", help="python StabilityTest.py -r -s 0584e3fc", action="store_true")
+    parser.add_argument('-s', dest='sn', help="python StabilityTest.py -r -s 0584e3fc")
     parser.add_argument('-u', dest='uploadLog', help="upload log to server")
-    parser.add_argument('-s', dest='sn', help="device id")
     args = parser.parse_args()
-    if args.filterLog:
-        print args.filterLog
-        parseLogs().parseLogs(args.filterLog)
+    if args.formatlog:
+        print args.formatlog
+        parseLogs().parseLogs(args.formatlog)
     if args.uploadLog:
         pass
 
-    if args.sn:
-        deviceid = args.sn
-        StabilityTest(deviceid).run(deviceid)
-    else:
-        print "usage: StabilityTest.py [-h] [-f FILTERLOG] [-u UPLOADLOG] [-s SN]"
+    if args.r:
+        if args.sn:
+            deviceid = args.sn
+            StabilityTest(deviceid).run(deviceid)
+        else:
+            prints.print_msg("E", "comman line: \r\n  python StabilityTest.py -r -s 0584e3fc")
 
 
 if __name__ == "__main__":
