@@ -11,12 +11,13 @@ from common import prints
 import shutil
 
 ##配置参数
-TestMin = 1  # 测试时间，分钟
-TimeOut = 1000  # 超时时间（秒）
-eventTimes = 500  # 事件次数
-delay = 500  # 两个事件间的延迟
+TestMin = 10  # 测试时间，分钟
+TimeOut = 10000  # 超时时间（秒）
+eventTimes = 5000  # 事件次数
+delay = 100  # 两个事件间的延迟
 logDir = "crashlog"
 jsonDir = logDir + os.sep + "json"
+picDir = logDir + os.sep + "pic"
 
 
 class StabilityTest():
@@ -36,6 +37,8 @@ class StabilityTest():
             os.makedirs(self.logDir)
         if not os.path.exists(jsonDir):
             os.makedirs(jsonDir)
+        if not os.path.exists(picDir):
+            os.makedirs(picDir)
         self.recordDeviceInfo(self.logDir)
 
     def setup(self):
@@ -61,34 +64,32 @@ class StabilityTest():
             pylog.log.error(time.time() - self.localTime)
             self.setup()
             cmd_part = '-s %s' % deviceTarget
-
             runTarget = self.runPackages()  # swith: runPackages()  , runBlaskList(cmd_part)  #debug
             time.sleep(1)
-
-            def test_job(*args):
-                deviceTarget, runTarget, seed, eventTimes, delay, logPath = args
-                pylog.log.info("第 %s 次测试" % i)
-                # deviceTarget,runTarget=runTarget, seed=seed, eventTimes=eventTimes, delay=delaey, logPath=logPath
-                print "adb -s %s shell monkey %s \
-                     -s %s -v %s --throttle %s  --monitor-native-crashes --kill-process-after-error --ignore-timeouts \
-                    --pct-touch 50 --pct-motion 25 --pct-trackball 15 --pct-syskeys 5 --pct-appswitch 5  > %s" % (
-                    deviceTarget, runTarget, seed, eventTimes, delay, logPath)
-                try:
-                    t = threading.Thread(target=os.system, args=("adb -s %s shell monkey %s \
-                     -s %s -v %s --throttle %s  --monitor-native-crashes --kill-process-after-error --ignore-timeouts \
-                    --pct-touch 50 --pct-motion 25 --pct-trackball 15 --pct-syskeys 5 --pct-appswitch 5  > %s" % (
-                        deviceTarget, runTarget, seed, eventTimes, delay, logPath),))
-                    t.start()
-                    t.join(self.timeout)
-                except:
-                    pylog.log.error('执行错误')
-                    time.sleep(15)
-
-            pylog.log.info("add_job:%s" % deviceTarget)
-            test_job(deviceTarget, runTarget, self.seed, self.eventTimes, self.delay, self.logPath)
-            pylog.log.info("wait_complete_in_thread:%s" % deviceTarget)
-            # self.wait_complete_in_thread(self.teardown, cmd_part, self.logPath, self.crashJson, deviceTarget)
+            pylog.log.info(u"add_job:%s" % deviceTarget)
+            pylog.log.info(u"第 %s 次测试" % i)
+            self.test_job(deviceTarget, runTarget, self.seed, self.eventTimes, self.delay, self.logPath)
+            self.getPic(deviceTarget)
+            time.sleep(5)
             i += 1
+
+    def test_job(self, *args):
+        deviceTarget, runTarget, seed, eventTimes, delay, logPath = args
+        # deviceTarget,runTarget=runTarget, seed=seed, eventTimes=eventTimes, delay=delaey, logPath=logPath
+        print "adb -s %s shell monkey %s \
+             -s %s -v %s --throttle %s  --monitor-native-crashes --kill-process-after-error --ignore-timeouts \
+            --pct-touch 50 --pct-motion 25 --pct-trackball 15 --pct-syskeys 5 --pct-appswitch 5  > %s" % (
+            deviceTarget, runTarget, seed, eventTimes, delay, logPath)
+        try:
+            t = threading.Thread(target=os.system, args=("adb -s %s shell monkey %s \
+             -s %s -v %s --throttle %s  --monitor-native-crashes --kill-process-after-error --ignore-timeouts \
+            --pct-touch 50 --pct-motion 25 --pct-trackball 15 --pct-syskeys 5 --pct-appswitch 5  > %s" % (
+                deviceTarget, runTarget, seed, eventTimes, delay, logPath),))
+            t.start()
+            t.join(self.timeout)
+        except:
+            pylog.log.error(u'执行错误')
+            time.sleep(15)
 
     def teardown(self, logPath, crashJson, arg=''):
         pylog.log.info('teardown!')
@@ -238,23 +239,28 @@ class StabilityTest():
 
 
 class parseLogs():
+    def __init__(self):
+        self.picDir = picDir
+
     def parseLogs(self, logDir):
         for dirpath, dirnames, filenames in os.walk(logDir):
             for file in filenames:
                 filePath = os.path.join(dirpath, file)
-                self.filterCrashLog(filePath, jsonDir + r'/%s.json' % file, dirpath)
-                # crashlog/raw/xxxxx/logxxxx.txt, crashlog/json/xxxxx.json
-                # dirpath/deviceinfo.txt
+                if file[:3] == "log":
+                    prints.print_msg("E", file)
+                    self.filterCrashLog(filePath, jsonDir + r'/%s.json' % file, dirpath, file)
+                    # crashlog/raw/xxxxx/logxxxx.txt, crashlog/json/xxxxx.json
+                    # dirpath/deviceinfo.txt
 
-    def filterCrashLog(self, logPath, crashJsonPath, arg=''):
+    def filterCrashLog(self, logPath, crashJsonPath, dirpath, file):
         crassInfoDict = self.parseLog(logPath)
         if crassInfoDict:
-            prints.print_msg("E", crassInfoDict)
-            deviceinfo = arg + "/deviceInfo.txt"
+            # cmd = cp screen self.picDir
+            self.copypic(dirpath, file)
+            deviceinfo = dirpath + "/deviceInfo.txt"
             jsonCrashResult = self.rawJson(crassInfoDict, deviceinfo)
-            fileObj = open(crashJsonPath, 'w')
-            fileObj.write(jsonCrashResult)
-            fileObj.close()
+            with open(crashJsonPath, 'w') as fileObj:
+                fileObj.write(jsonCrashResult)
 
     def parseLog(self, logPath):
         pylog.log.info('parseLog:\nlogPath: %s' % logPath)
@@ -349,7 +355,7 @@ class parseLogs():
         device_info_dict["model"] = modelName
         return device_info_dict
 
-    def rawJson(self, crassInfoDict, arg=''):  # = self.parseLog('d:\\log.txt')
+    def rawJson(self, crassInfoDict, arg):  # = self.parseLog('d:\\log.txt')
         resultDict = {}
         resultDict_error_infos = []
         resultDict_error_infos.append(crassInfoDict)  # debug
@@ -372,6 +378,15 @@ class parseLogs():
         resultDictJson = json.dumps(resultDict)
         return resultDictJson
 
+    def copypic(self, dirpath, file):
+        filename = "screenshot_" + file[4:22] + "png"
+        src = os.path.join(dirpath, filename)
+        dst = self.picDir
+        try:
+            shutil.copy(src, dst)
+        except:
+            pass
+
 
 class upload_logs():
     def __init__(self):
@@ -392,14 +407,14 @@ def parseArgs(argv):
     parser.add_argument('-f', dest='formatlog', help="python StabilityTest.py -f crashlog/raw")
     parser.add_argument("-r", help="python StabilityTest.py -r -s 0584e3fc", action="store_true")
     parser.add_argument('-s', dest='sn', help="python StabilityTest.py -r -s 0584e3fc")
-    parser.add_argument('-u', dest='uploadLog', help="upload log to server")
+    parser.add_argument('-u', dest='uploadLog', help="upload log to server",action="store_true")
+    parser.add_argument('--reboot', dest='reboot', help="reboot the device once error occurs")
     args = parser.parse_args()
     if args.formatlog:
         print args.formatlog
         parseLogs().parseLogs(args.formatlog)
     if args.uploadLog:
-        pass
-
+        prints.print_msg("A",u"请手动拷贝 crashlog/json 到//192.168.1.112/share/report/OSCrash_json")
     if args.r:
         if args.sn:
             deviceid = args.sn
