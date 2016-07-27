@@ -321,8 +321,11 @@ class parseLogs():
             return False
 
     def getDeviceInfo(self, arg=''):
-        with open(arg, "r") as f:
-            deviceInfoList = f.readlines()
+        try:
+            with open(arg, "r") as f:
+                deviceInfoList = f.readlines()
+        except:
+            pass
         pid = 0
         manufacturer, deviceName, sdkName, productName, brandName, modelName = '', '', '', '', '', ''
         #         print deviceInfoList
@@ -370,7 +373,10 @@ class parseLogs():
         except:
             resultDict_pic = {"log_path": 'null'}
 
-        resultDict["device_info"] = self.getDeviceInfo(arg)
+        try:
+            resultDict["device_info"] = self.getDeviceInfo(arg)
+        except:
+            resultDict["device_info"] = {}
         resultDict["error_infos"] = resultDict_error_infos
         resultDict.update(resultDict_app_version)
         resultDict.update(resultDict_mid)
@@ -386,7 +392,6 @@ class parseLogs():
             shutil.copy(src, dst)
         except:
             pass
-
 
 class upload_logs():
     def __init__(self):
