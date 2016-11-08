@@ -11,10 +11,10 @@ from common import prints
 import shutil
 
 ##配置参数
-TestMin = 10  # 测试时间，分钟
+TestMin = 600  # 测试时间，分钟
 TimeOut = 10000  # 超时时间（秒）
-eventTimes = 5000  # 事件次数
-delay = 100  # 两个事件间的延迟
+eventTimes = 500000  # 事件次数
+delay = 1000  # 两个事件间的延迟
 logDir = "crashlog"
 jsonDir = logDir + os.sep + "json"
 picDir = logDir + os.sep + "pic"
