@@ -11,9 +11,9 @@ from common import prints
 import shutil
 
 ##配置参数
-TestMin = 600  # 测试时间，分钟
-TimeOut = 10000  # 超时时间（秒）
-eventTimes = 500000  # 事件次数
+TestMin = 5  # 测试时间，分钟,默认600分钟
+TimeOut = 100000  # 超时时间（秒）
+eventTimes = 100000  # 事件次数,默认10w次
 delay = 1000  # 两个事件间的延迟
 logDir = "crashlog"
 jsonDir = logDir + os.sep + "json"
@@ -22,6 +22,7 @@ picDir = logDir + os.sep + "pic"
 
 class StabilityTest():
     def __init__(self, device):
+        self.blacklist = self.getBlacklist()
         self.testTime = TestMin
         self.localTime = time.time()
         self.timeout = TimeOut  # second
@@ -40,6 +41,8 @@ class StabilityTest():
         if not os.path.exists(picDir):
             os.makedirs(picDir)
         self.recordDeviceInfo(self.logDir)
+        self.getPkglist(self.logDir)
+        self.pkglist = self.parsePkg(self.logDir)
 
     def setup(self):
         ranStr = time.strftime("%Y-%m-%d_%H%M%S", time.localtime())
@@ -62,39 +65,54 @@ class StabilityTest():
         i = 1
         while time.time() - self.localTime < self.testTime * 60:
             pylog.log.error(time.time() - self.localTime)
-            self.setup()
-            cmd_part = '-s %s' % deviceTarget
+            #self.setup()
             runTarget = self.runPackages()  # swith: runPackages()  , runBlaskList(cmd_part)  #debug
             time.sleep(1)
             pylog.log.info(u"add_job:%s" % deviceTarget)
             pylog.log.info(u"第 %s 次测试" % i)
-            self.test_job(deviceTarget, runTarget, self.seed, self.eventTimes, self.delay, self.logPath)
-            self.getPic(deviceTarget)
+            for pkg in self.pkglist:
+                pkg = pkg.strip("\r\n")
+                if not(pkg in self.blacklist):
+                    self.setup()
+                    self.test_job(deviceTarget, runTarget, pkg, self.seed, self.eventTimes, self.delay, self.logPath)
+                    time.sleep(5)
+                    self.getPic(deviceTarget)
+                    time.sleep(5)
+                    self.kill_job(pkg)
             time.sleep(5)
             i += 1
+        print("finish!!!!!!!!!!!!!!!!!!!!!!!1")
 
     def test_job(self, *args):
-        deviceTarget, runTarget, seed, eventTimes, delay, logPath = args
-        # deviceTarget,runTarget=runTarget, seed=seed, eventTimes=eventTimes, delay=delaey, logPath=logPath
-        print "adb -s %s shell monkey %s \
-             -s %s -v %s --throttle %s  --monitor-native-crashes --kill-process-after-error --ignore-timeouts \
-            --pct-touch 50 --pct-motion 25 --pct-trackball 15 --pct-syskeys 5 --pct-appswitch 5  > %s" % (
-            deviceTarget, runTarget, seed, eventTimes, delay, logPath)
+        deviceTarget, runTarget, pkg, seed, eventTimes, delay, logPath = args
+        print("adb -s %s shell monkey %s -p %s -s %s -v %s --throttle %s  --monitor-native-crashes --kill-process-after-error --ignore-timeouts  --pct-touch 50 --pct-motion 25 --pct-trackball 15 --pct-syskeys 5 --pct-appswitch 5  > %s" % (deviceTarget, runTarget, pkg, seed, eventTimes, delay, logPath),)
         try:
-            t = threading.Thread(target=os.system, args=("adb -s %s shell monkey %s \
-             -s %s -v %s --throttle %s  --monitor-native-crashes --kill-process-after-error --ignore-timeouts \
-            --pct-touch 50 --pct-motion 25 --pct-trackball 15 --pct-syskeys 5 --pct-appswitch 5  > %s" % (
-                deviceTarget, runTarget, seed, eventTimes, delay, logPath),))
+            t = threading.Thread(target=os.system, args=("adb -s %s shell monkey %s -p %s -s %s -v %s --throttle %s  --monitor-native-crashes --kill-process-after-error --ignore-timeouts  --pct-touch 50 --pct-motion 25 --pct-trackball 15 --pct-syskeys 5 --pct-appswitch 5  > %s" % (deviceTarget, runTarget, pkg, seed, eventTimes, delay, logPath),))
             t.start()
             t.join(self.timeout)
         except:
             pylog.log.error(u'执行错误')
             time.sleep(15)
 
+    def kill_job(self,arg):
+         cmd = "adb shell ps |grep " + arg
+         print cmd
+         try:
+             pidlist = os.popen(cmd).readlines()
+             for item in pidlist:
+                 pid = item.split()[1]
+                 print pid
+                 cmd = "adb shell kill " + pid
+                 print cmd
+                 time.sleep(2)
+                 os.system(cmd)
+         except:
+             pass
+        #cmd = "adb shell am start -n com.chaozhuo.switchcontroller/.CZSwitchControllerActivity"
+
     def teardown(self, logPath, crashJson, arg=''):
         pylog.log.info('teardown!')
         self.stop(arg)
-        #         self.stopLogcat(arg)  ##stop logcat
         self.getPic(arg)
         self.filterCrashLog(logPath, crashJson, arg='')
         if random.randint(1, 10) <= 2:  # 随机清空应用数据
@@ -153,26 +171,6 @@ class StabilityTest():
 
     def runPackages(self):
         return ' '  # -p com.chaozhuo.browser -p com.chaozhuo.filemanager
-
-    def runBlaskList(self, arg=''):
-        blacklistFilePath = 'blacklist.txt'  ##self.makeBlacklist()
-        os.system('adb -s %s push %s  /data' % (arg, blacklistFilePath))
-        return '--pkg-blacklist-file /data/%s' % blacklistFilePath
-
-    def makeBlacklist(self, blacklistFile='blacklist.txt'):
-        blacklistClass = os.popen("adb shell pm list packages ")
-        blacklistStr = blacklistClass.read()
-        blacklistR = blacklistStr.replace('package:', '')
-        blacklist = blacklistR.split('\r\n')
-        for blackone in blacklist:
-            if blackone.find('com.android.systemui') > -1:
-                #             if blackone.find('chaozhuo')>-1 or blackone.find('com.android.systemui')>-1:
-                blacklist.remove(blackone)
-        blacklistRR = '\r\n'.join(blacklist)
-        fObj = open(blacklistFile, 'w')
-        fObj.write(blacklistRR)
-        fObj.close()
-        return blacklistFile
 
     def getPic(self, arg=''):
         os.system("adb -s %s shell /system/bin/screencap -p /sdcard/screenshot.png" % arg)
@@ -237,6 +235,29 @@ class StabilityTest():
             for item in deviceInfoClass.read():
                 f.write(item)
 
+    def getPkglist(self, arg=""):
+        pkglist = os.popen("adb shell pm list package")
+        with open(arg + "/pkglist.txt", "w") as f:
+            for item in pkglist.read():
+                f.write(item)
+
+    def parsePkg(self, arg=""):
+        with open(arg + "/pkglist.txt", "r") as f:
+            pkglist = f.readlines()
+        finalpkglist = []
+        for item in pkglist:
+            finalpkglist.append(item.split(":")[1])
+        return finalpkglist
+
+    def getBlacklist(self):
+        with open("blacklist.txt", "r") as f:
+            black_raw = f.readlines()
+        blacklist = []
+        for item in black_raw:
+            if not(item[0] == "#"):
+                blacklist.append(item.split(":")[1].strip("\r\n"))
+        print blacklist
+        return blacklist
 
 class parseLogs():
     def __init__(self):
@@ -393,6 +414,7 @@ class parseLogs():
         except:
             pass
 
+
 class upload_logs():
     def __init__(self):
         self.l_json = 'crashlog/json'
@@ -412,14 +434,15 @@ def parseArgs(argv):
     parser.add_argument('-f', dest='formatlog', help="python StabilityTest.py -f crashlog/raw")
     parser.add_argument("-r", help="python StabilityTest.py -r -s 0584e3fc", action="store_true")
     parser.add_argument('-s', dest='sn', help="python StabilityTest.py -r -s 0584e3fc")
-    parser.add_argument('-u', dest='uploadLog', help="upload log to server",action="store_true")
-    parser.add_argument('--reboot', dest='reboot', help="reboot the device once error occurs",action="store_true")
+    parser.add_argument('-u', dest='uploadLog', help="upload log to server", action="store_true")
+    parser.add_argument('-solo', dest='solo', help="run package one by one", action="store_true")
+    parser.add_argument('--reboot', dest='reboot', help="reboot the device once error occurs", action="store_true")
     args = parser.parse_args()
     if args.formatlog:
         print args.formatlog
         parseLogs().parseLogs(args.formatlog)
     if args.uploadLog:
-        prints.print_msg("A",u"请手动拷贝 crashlog/json 到//192.168.1.112/share/report/OSCrash_json")
+        prints.print_msg("A", u"请手动拷贝 crashlog/json 到//192.168.1.112/share/report/OSCrash_json")
     if args.r:
         if args.sn:
             deviceid = args.sn
