@@ -11,10 +11,10 @@ from common import prints
 import shutil
 
 ##配置参数
-TestMin = 5  # 测试时间，分钟,默认600分钟
-TimeOut = 100000  # 超时时间（秒）
-eventTimes = 100000  # 事件次数,默认10w次
-delay = 1000  # 两个事件间的延迟
+TestMin = 1200  # 测试时间，分钟,默认600分钟
+TimeOut = 300 # 超时时间（秒）
+eventTimes = 10000  # 事件次数,默认10w次
+delay = 500  # 两个事件间的延迟
 logDir = "crashlog"
 jsonDir = logDir + os.sep + "json"
 picDir = logDir + os.sep + "pic"
@@ -68,18 +68,21 @@ class StabilityTest():
             #self.setup()
             runTarget = self.runPackages()  # swith: runPackages()  , runBlaskList(cmd_part)  #debug
             time.sleep(1)
+            cmd = 'adb root'
+            os.system(cmd)
             pylog.log.info(u"add_job:%s" % deviceTarget)
             pylog.log.info(u"第 %s 次测试" % i)
             for pkg in self.pkglist:
                 pkg = pkg.strip("\r\n")
                 if not(pkg in self.blacklist):
                     self.setup()
+                    pylog.log.error(pkg)
                     self.test_job(deviceTarget, runTarget, pkg, self.seed, self.eventTimes, self.delay, self.logPath)
-                    time.sleep(5)
+                    time.sleep(10)
                     self.getPic(deviceTarget)
-                    time.sleep(5)
+                    time.sleep(10)
                     self.kill_job(pkg)
-            time.sleep(5)
+            time.sleep(10)
             i += 1
         print("finish!!!!!!!!!!!!!!!!!!!!!!!1")
 
@@ -87,7 +90,7 @@ class StabilityTest():
         deviceTarget, runTarget, pkg, seed, eventTimes, delay, logPath = args
         print("adb -s %s shell monkey %s -p %s -s %s -v %s --throttle %s  --monitor-native-crashes --kill-process-after-error --ignore-timeouts  --pct-touch 50 --pct-motion 25 --pct-trackball 15 --pct-syskeys 5 --pct-appswitch 5  > %s" % (deviceTarget, runTarget, pkg, seed, eventTimes, delay, logPath),)
         try:
-            t = threading.Thread(target=os.system, args=("adb -s %s shell monkey %s -p %s -s %s -v %s --throttle %s  --monitor-native-crashes --kill-process-after-error --ignore-timeouts  --pct-touch 50 --pct-motion 25 --pct-trackball 15 --pct-syskeys 5 --pct-appswitch 5  > %s" % (deviceTarget, runTarget, pkg, seed, eventTimes, delay, logPath),))
+            t = threading.Thread(target=os.system, args=("adb -s %s shell monkey %s -p %s -s %s -v %s --throttle %s  --monitor-native-crashes --kill-process-after-error --ignore-timeouts  --pct-touch 50 --pct-motion 25 --pct-trackball 15 --pct-syskeys 5 --pct-appswitch 5  > %s 2>&1" % (deviceTarget, runTarget, pkg, seed, eventTimes, delay, logPath),))
             t.start()
             t.join(self.timeout)
         except:
@@ -230,7 +233,9 @@ class StabilityTest():
                 os.system(delcmd)
 
     def recordDeviceInfo(self, arg=''):
-        deviceInfoClass = os.popen("adb shell cat /system/build.prop")
+
+        deviceInfoClass = os.popen("adb shell getprop")
+        #deviceInfoClass = os.popen("adb shell cat /system/build.prop")
         with open(arg + "/deviceInfo.txt", "w") as f:
             for item in deviceInfoClass.read():
                 f.write(item)
@@ -250,6 +255,7 @@ class StabilityTest():
         return finalpkglist
 
     def getBlacklist(self):
+        # the blacklist are the lines which are not start with "#"
         with open("blacklist.txt", "r") as f:
             black_raw = f.readlines()
         blacklist = []
@@ -323,14 +329,6 @@ class parseLogs():
                 crassInfoDict['class_name'] = className.strip()
                 crassInfoDict['app_version'] = '1.0'
                 crassInfoDict['message'] = message.strip()
-            # else:  #ANR
-            #                 crassInfoDict = {}
-            #                 crassInfoDict['time'] = time.time()*1000
-            #                 crassInfoDict['stack'] = crassInfo[1].strip()
-            #                 crassInfoDict['net_type'] = 'wifi'
-            #                 crassInfoDict['class_name'] = crassInfo[0].strip()
-            #                 crassInfoDict['app_version'] = '1.0'
-            #                 crassInfoDict['message'] = crassInfo[0].strip()
             crassInfoDict['file_path'] = logPath
             try:
                 crassInfoDict['pic_path'] = self.screenPathTarget
