@@ -307,7 +307,10 @@ class parseLogs():
             elif one.find('// Short Msg:') > -1:
                 className = one.split(':')[1]
             elif one.find('// Long Msg:') > -1:
-                message = one.split(':')[2]
+                if len(one.split(':')) == 2:
+                    message = one.split(':')[1]
+                else:
+                    message = one.split(':')[2]
             elif one.find('// Build Time:') > -1:
                 infoTime = one.split(':')[1]
             # ##ANR
@@ -326,7 +329,7 @@ class parseLogs():
         if crassInfo:
             if len(crassInfo) > 2:  # crash
                 crassInfoDict = {}
-                crassInfoDict['Package:'] = crashPackage.strip()
+                crassInfoDict['package_name:'] = crashPackage.strip()
                 crassInfoDict['time'] = infoTime.strip()
                 crassInfoDict['stack'] = ''.join(crassInfo).strip()
                 crassInfoDict['net_type'] = 'wifi'
