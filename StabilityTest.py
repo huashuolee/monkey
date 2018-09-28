@@ -298,6 +298,9 @@ class parseLogs():
         lineNum = 0
         for one in log_list:
             lineNum += 1
+            if one.find('AllowPackage') > -1:
+                crashPackage = one.split(':')[2]
+
             if one.find('// CRASH: ') > -1:
                 flag = 1
                 crashLineNum = lineNum
@@ -323,6 +326,7 @@ class parseLogs():
         if crassInfo:
             if len(crassInfo) > 2:  # crash
                 crassInfoDict = {}
+                crassInfoDict['Package:'] = crashPackage.strip()
                 crassInfoDict['time'] = infoTime.strip()
                 crassInfoDict['stack'] = ''.join(crassInfo).strip()
                 crassInfoDict['net_type'] = 'wifi'
